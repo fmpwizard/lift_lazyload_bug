@@ -11,7 +11,7 @@ import net.liftweb.http.S
 class HelloWorld {
   lazy val date: Box[Date] = DependencyFactory.inject[Date] // inject the date
   def howdy = {
-    Thread.sleep(1000)
+    Thread.sleep(3000)
     S.warning("Slow!")
     "#time *" #> date.map(_.toString)
   }

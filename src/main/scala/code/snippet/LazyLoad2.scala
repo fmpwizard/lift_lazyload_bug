@@ -6,9 +6,20 @@ import net.liftweb.common._
 import net.liftweb.http._
 import scala.xml.{Comment, NodeSeq}
 import net.liftweb.http.js.{JE, JsCmds, JsCmd}
-import net.liftweb.http.js.JsCmds.Replace
-import net.liftweb.builtin.snippet.Msgs
+import net.liftweb.http.js.JsCmds._
+import net.liftweb.builtin.snippet._
 import net.liftweb.http.js.jquery.JqJE.{JqAppend, JqAppendTo}
+import net.liftweb.builtin
+import net.liftweb.http.CometCreationInfo
+import net.liftweb.common.Full
+import scala.xml.Comment
+import net.liftweb.http.PerformSetupComet2
+import net.liftweb.http.CometCreationInfo
+import net.liftweb.http.js.JsCmds.Replace
+import net.liftweb.common.Full
+import scala.xml.Comment
+import net.liftweb.http.PerformSetupComet2
+import net.liftweb.http.js.jquery.JqJE
 
 object LazyLoad2 extends DispatchSnippet {
   private object myFuncName extends TransientRequestVar(Helpers.nextFuncName)
@@ -75,8 +86,56 @@ object LazyLoad2 extends DispatchSnippet {
       val id = Helpers.nextFuncName
 
       val func: () => JsCmd = {
+
+        LiftRules.noticesToJsCmd =  () => {
+          import builtin.snippet.{Msg,Msgs,MsgErrorMeta,MsgNoticeMeta,MsgWarningMeta}
+
+          // A "wrapper" that simply returns the javascript
+          val passJs = (in : JsCmd) => in
+
+          // Delegate to Msgs for fadeout and effects
+          def noticesFadeOut(noticeType: NoticeType.Value): JsCmd =
+            Msgs.noticesFadeOut(noticeType, Noop, passJs)
+
+          def groupEffects(noticeType: NoticeType.Value): JsCmd =
+            Msgs.effects(Full(noticeType), noticeType.id, Noop, passJs)
+
+          def idEffects(id : String): JsCmd =
+            Msgs.effects(Empty, id, Noop, passJs)
+
+          // Compute the global notices first
+          val groupMessages = Msgs.renderNotices() match {
+            case NodeSeq.Empty => JsCmds.Noop
+            case xml =>
+              JqJE.Jq("#" + LiftRules.noticesContainerId) ~> JqAppend(xml) &
+              //LiftRules.jsArtifacts.setHtml(LiftRules.noticesContainerId, xml) &
+              noticesFadeOut(NoticeType.Notice) &
+              noticesFadeOut(NoticeType.Warning) &
+              noticesFadeOut(NoticeType.Error) &
+              groupEffects(NoticeType.Notice) &
+              groupEffects(NoticeType.Warning) &
+              groupEffects(NoticeType.Error)
+          }
+
+          // We need to determine the full set of IDs that need messages rendered.
+          val idSet = (S.idMessages((S.errors)) ++
+            S.idMessages((S.warnings)) ++
+            S.idMessages((S.notices))).map(_._1).distinct
+          // Merge each Id's messages and effects into the JsCmd chain
+          idSet.foldLeft(groupMessages) {
+            (chain,id) => chain &
+              JqJE.Jq(id) ~> JqAppend(Msg.renderIdMsgs(id)) &
+              /*LiftRules.jsArtifacts.setHtml(id, Msg.renderIdMsgs(id)) &*/
+              idEffects(id)
+          }
+        }
+
         session.buildDeferredFunction(() => {
+
           Replace(id, xhtml) &
+          JsCmd.unitToJsCmd(
+
+          )&
           LiftRules.noticesToJsCmd()
         })
       }
